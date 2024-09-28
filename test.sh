@@ -10,17 +10,28 @@ subdir="$dir/nested/and/another/level"
 touch "$dir/stem.ext"
 mkdir -p "$subdir"
 touch "$subdir/stem.ext"
+cd "$(mktemp -d)"
 
-testfind() { #1:description 2:glob 3:path 4:exit 5:stdout
+testfind() { #1:description 2:exit 3:stdout 4...:args
+    for x in PWD OLDPWD; do
+        eval "s$x=\"\$$x\""
+    done
 	sh="$(ps -p $$ -o comm=)"
-	out="$(upwardfind "$2" "$3")" && exit=0 || exit=$?
-	[ "$exit" = "$4" ] || die "$sh $1: Exit status $exit does not match expected"
+	exit=0
+	out="$(shift 3; upwardfind "$@")" || exit=$?
+	[ "$exit" = "$2" ] || echo "$sh $1: Exit status $exit does not match expected"
+	[ "$out" = "$3" ] || echo "$sh $1: expected: $3 and got $out"
+    for x in PWD OLDPWD; do
+        [ "$(eval "echo \"\$$x"\")" = "$(eval "echo \"\$s$x"\")" ] \
+            || echo "$sh upwardfind overwrote $x"
+    done
+
 }
 
-testfind "same directory" stem.ext "$subdir" 0 "$subdir/stem.ext"
-testfind "way up" stem.ext "$(dirname "$subdir")" 0 "$dir/stem.ext"
-testfind "glob same directory" '*.ext' "$(dirname "$subdir")" 0 "$dir/stem.ext"
-testfind "file won't exist" 'thisfileshouldnotexistlet'\''shopeforthebest' \
-	"$(dirname "$subdir")" 1 "$dir/stem.ext"
+testfind "same directory" 0 "$subdir/stem.ext" -C "$subdir" stem.ext "$subdir"
+testfind "way up" 0 "$dir/stem.ext" -C "$(dirname "$subdir")" stem.ext
+testfind "glob same directory" 0 "$dir/stem.ext" -C "$(dirname "$subdir")" '*.ext'
+testfind "file won't exist" 1 "" -C "$(dirname "$subdir")" \
+	'thisfileshouldnotexistlet'\''shopeforthebest'
 
 rm -r "$dir"
